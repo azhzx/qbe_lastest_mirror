@@ -1,0 +1,44 @@
+name: Sync QBE from c9x.me
+
+on:
+  schedule:
+    - cron: '17 21 * * *'   # UTC 21:17 ≈ 北京时间 05:17（避开整点高峰）
+  workflow_dispatch:         # 支持手动触发
+
+permissions:
+  contents: write            # GITHUB_TOKEN 推送所需，零配置免 PAT
+
+concurrency:
+  group: qbe-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone upstream (bare)
+        run: git clone --bare git://c9x.me/qbe.git upstream.git
+
+      - name: Push branches & tags
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd upstream.git
+          git push --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            'refs/heads/*:refs/heads/*' \
+            'refs/tags/*:refs/tags/*'
+
+      - name: Keepalive（main 闲置超 50 天时补空提交，防 60 天自动停用）
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git clone --depth=1 --single-branch --branch main \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" meta
+          cd meta
+          if [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt 4320000 ]; then
+            git config user.name "qbe-mirror-bot"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "chore: keepalive (upstream unchanged)"
+            git push
+          fi

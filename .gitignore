@@ -1,0 +1,5 @@
+# ZCode 会话数据
+.zcode/
+
+# macOS
+.DS_Store
